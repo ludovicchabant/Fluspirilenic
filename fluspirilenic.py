@@ -60,6 +60,9 @@ def sync_read(args):
             dst.select(mbox[1])
 
             try:
+                logger.debug("Getting destination message IDs...")
+                dst_msgids = _get_message_ids(dst)
+
                 logger.debug("Searching for messages with flag '%s'..." % search_flag)
                 typ, data = src.search(None, search_flag)
                 msgnums = data[0].split()
@@ -81,13 +84,13 @@ def sync_read(args):
                         continue
 
                     try:
-                        typ, data = dst.search(None, 'HEADER', 'Message-ID', '"%s"' % val)
-                        dstnum = data[0]
-                    except Exception as err:
-                        logger.warning("Ignoring message because search on destination failed:")
-                        logger.warning(err)
+                        dstnum = dst_msgids[val]
+                    except Exception:
+                        logger.warning("Ignoring message because we can't find it on the destination:")
+                        logger.warning(val)
                         typ, data = src.fetch(num, '(BODY.PEEK[HEADER])')
                         logger.warning(data[0])
+                        logger.warning("-----------")
                         continue
 
                     logger.debug("  Syncing status for %s -> %s [%s] [%s \\Seen]" % (num, dstnum, val, store_action))
@@ -168,6 +171,19 @@ def _get_mailboxes(args):
             mboxes.append((mapping[0], mapping[0]))
         logger.debug("  %s -> %s" % (mboxes[-1][0], mboxes[-1][1]))
     return mboxes
+
+
+def _get_message_ids(box):
+    typ, data = box.fetch("1:*", "(BODY[HEADER.FIELDS (Message-Id)])")
+    msgids = {}
+    for d in data:
+        if len(d) == 1:
+            continue
+        parts = d[0].split(' ', 2)
+        uid = parts[0]
+        hd, msgid = _get_header(d[1])
+        msgids[msgid] = uid
+    return msgids
 
 
 def _close(src, dst):
